@@ -1,9 +1,9 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
 import plotly.express as px
+import seaborn as sns
+import matplotlib.pyplot as plt
 
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder, StandardScaler
@@ -13,87 +13,102 @@ from sklearn.metrics import (
     accuracy_score,
     confusion_matrix,
     ConfusionMatrixDisplay,
-    classification_report,
     r2_score,
     mean_squared_error,
     roc_curve,
     auc
 )
 
-st.set_page_config(page_title="Universal ML Dashboard", layout="wide")
-st.title("🤖 Universal Machine Learning Dashboard")
+# ---------------------------
+# Page Config
+# ---------------------------
+st.set_page_config(page_title="ML Studio", layout="wide")
 
-uploaded_file = st.file_uploader("Upload Your CSV File", type=["csv"])
+st.markdown("""
+<style>
+.main-title {
+    font-size:40px !important;
+    font-weight:700;
+}
+.metric-box {
+    padding:15px;
+    border-radius:10px;
+    background-color:#1f2937;
+}
+</style>
+""", unsafe_allow_html=True)
 
-if uploaded_file is not None:
+st.markdown('<p class="main-title">🚀 ML Studio</p>', unsafe_allow_html=True)
+st.caption("Clean. Interactive. Powerful.")
+
+uploaded_file = st.file_uploader("", type=["csv"])
+
+if uploaded_file:
 
     df = pd.read_csv(uploaded_file)
-
-    st.subheader("📊 Dataset Overview")
-    st.write("Shape:", df.shape)
-    st.dataframe(df.head())
 
     numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
     categorical_cols = df.select_dtypes(exclude=np.number).columns.tolist()
 
-    # ===============================
-    # DATA VISUALIZATION SECTION
-    # ===============================
+    # Sidebar Controls
+    st.sidebar.header("⚙️ Configuration")
 
-    st.subheader("📈 Data Visualization")
+    task = st.sidebar.selectbox("Task", ["Classification", "Regression"])
 
-    col1, col2 = st.columns(2)
+    target = st.sidebar.selectbox("Target Variable", df.columns)
 
-    with col1:
-        if numeric_cols:
-            selected_hist = st.selectbox("Histogram for:", numeric_cols)
-            fig = px.histogram(df, x=selected_hist)
-            st.plotly_chart(fig, use_container_width=True)
-
-    with col2:
-        if numeric_cols:
-            fig, ax = plt.subplots()
-            sns.heatmap(df[numeric_cols].corr(), annot=True, cmap="coolwarm", ax=ax)
-            st.pyplot(fig)
-
-    if categorical_cols:
-        st.subheader("📊 Categorical Distribution")
-        cat_col = st.selectbox("Select categorical column:", categorical_cols)
-        fig = px.histogram(df, x=cat_col, color=cat_col)
-        st.plotly_chart(fig, use_container_width=True)
-
-    # ===============================
-    # TASK SELECTION
-    # ===============================
-
-    st.subheader("⚙️ Model Configuration")
-
-    task = st.radio("Select Task Type", ["Classification", "Regression"])
-
-    target = st.selectbox("Select Target Variable", df.columns)
-
-    features = st.multiselect(
-        "Select Feature Columns",
+    features = st.sidebar.multiselect(
+        "Feature Variables",
         [col for col in df.columns if col != target]
     )
 
-    test_size = st.slider("Test Size (%)", 10, 50, 20) / 100
+    test_size = st.sidebar.slider("Test Size", 0.1, 0.5, 0.2)
 
-    scale_option = st.checkbox("Apply Feature Scaling (Recommended for Regression)")
+    scale = st.sidebar.checkbox("Apply Scaling")
 
-    if st.button("Train & Evaluate"):
+    tabs = st.tabs(["📊 Visuals", "🤖 Model", "📈 Insights"])
 
-        if not features:
-            st.warning("Please select at least one feature.")
-        else:
+    # -----------------------------------
+    # VISUAL TAB
+    # -----------------------------------
+
+    with tabs[0]:
+
+        if numeric_cols:
+
+            col1, col2 = st.columns(2)
+
+            with col1:
+                fig = px.scatter_matrix(
+                    df,
+                    dimensions=numeric_cols,
+                    color=target if target in categorical_cols else None,
+                    title="Feature Relationships"
+                )
+                st.plotly_chart(fig, use_container_width=True)
+
+            with col2:
+                fig2 = px.box(
+                    df,
+                    x=target if target in categorical_cols else None,
+                    y=numeric_cols[0],
+                    title="Distribution Overview"
+                )
+                st.plotly_chart(fig2, use_container_width=True)
+
+    # -----------------------------------
+    # MODEL TAB
+    # -----------------------------------
+
+    with tabs[1]:
+
+        if features:
 
             X = df[features]
             y = df[target]
 
-            # Encode categorical features
             X = pd.get_dummies(X, drop_first=True)
 
-            # Encode categorical target if classification
             if task == "Classification" and y.dtype == "object":
                 le = LabelEncoder()
                 y = le.fit_transform(y)
@@ -102,65 +117,42 @@ if uploaded_file is not None:
                 X, y, test_size=test_size, random_state=42
             )
 
-            if scale_option:
+            if scale:
                 scaler = StandardScaler()
                 X_train = scaler.fit_transform(X_train)
                 X_test = scaler.transform(X_test)
 
-            # =====================================
-            # CLASSIFICATION
-            # =====================================
-
             if task == "Classification":
 
                 model_choice = st.selectbox(
-                    "Choose Classification Model",
-                    ["Gaussian Naive Bayes", "Logistic Regression"]
+                    "Model",
+                    ["Naive Bayes", "Logistic Regression"]
                 )
 
-                if model_choice == "Gaussian Naive Bayes":
-                    model = GaussianNB()
-                else:
-                    model = LogisticRegression(max_iter=1000)
+                model = GaussianNB() if model_choice == "Naive Bayes" else LogisticRegression(max_iter=1000)
 
                 model.fit(X_train, y_train)
                 y_pred = model.predict(X_test)
 
                 acc = accuracy_score(y_test, y_pred)
 
-                st.success(f"Accuracy: {round(acc * 100, 2)}%")
+                st.metric("Accuracy", f"{round(acc*100,2)}%")
 
-                # Confusion Matrix
-                st.subheader("Confusion Matrix")
                 cm = confusion_matrix(y_test, y_pred)
-
                 fig, ax = plt.subplots()
-                ConfusionMatrixDisplay(cm).plot(ax=ax)
+                sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", ax=ax)
                 st.pyplot(fig)
 
-                # Classification Report
-                st.subheader("Classification Report")
-                report = classification_report(y_test, y_pred, output_dict=True)
-                st.dataframe(pd.DataFrame(report).transpose())
-
-                # ROC Curve (Binary only)
                 if len(np.unique(y)) == 2:
-                    y_probs = model.predict_proba(X_test)[:, 1]
+                    y_probs = model.predict_proba(X_test)[:,1]
                     fpr, tpr, _ = roc_curve(y_test, y_probs)
                     roc_auc = auc(fpr, tpr)
 
-                    fig, ax = plt.subplots()
-                    ax.plot(fpr, tpr, label=f"AUC = {round(roc_auc, 2)}")
-                    ax.plot([0, 1], [0, 1], linestyle="--")
-                    ax.set_xlabel("False Positive Rate")
-                    ax.set_ylabel("True Positive Rate")
-                    ax.set_title("ROC Curve")
-                    ax.legend()
-                    st.pyplot(fig)
-
-            # =====================================
-            # REGRESSION
-            # =====================================
+                    fig2 = px.area(
+                        x=fpr, y=tpr,
+                        title=f"ROC Curve (AUC = {round(roc_auc,2)})"
+                    )
+                    st.plotly_chart(fig2, use_container_width=True)
 
             else:
 
@@ -171,23 +163,32 @@ if uploaded_file is not None:
                 r2 = r2_score(y_test, y_pred)
                 mse = mean_squared_error(y_test, y_pred)
 
-                st.success(f"R² Score: {round(r2, 4)}")
-                st.write(f"Mean Squared Error: {round(mse, 4)}")
+                col1, col2 = st.columns(2)
+                col1.metric("R² Score", round(r2,4))
+                col2.metric("MSE", round(mse,4))
 
-                # Actual vs Predicted
-                fig, ax = plt.subplots()
-                ax.scatter(y_test, y_pred)
-                ax.set_xlabel("Actual")
-                ax.set_ylabel("Predicted")
-                ax.set_title("Actual vs Predicted")
-                st.pyplot(fig)
+                fig = px.scatter(
+                    x=y_test,
+                    y=y_pred,
+                    labels={"x":"Actual", "y":"Predicted"},
+                    title="Actual vs Predicted"
+                )
+                st.plotly_chart(fig, use_container_width=True)
 
-                # Residual Plot
-                residuals = y_test - y_pred
-                fig2, ax2 = plt.subplots()
-                ax2.scatter(y_pred, residuals)
-                ax2.axhline(0, linestyle="--")
-                ax2.set_xlabel("Predicted")
-                ax2.set_ylabel("Residuals")
-                ax2.set_title("Residual Plot")
-                st.pyplot(fig2)
+    # -----------------------------------
+    # INSIGHTS TAB
+    # -----------------------------------
+
+    with tabs[2]:
+
+        if numeric_cols:
+            corr = df[numeric_cols].corr()
+
+            fig, ax = plt.subplots(figsize=(8,6))
+            sns.heatmap(corr, cmap="coolwarm", annot=True)
+            st.pyplot(fig)
+
+            st.markdown("### Feature Correlation Insight")
+            st.write(
+                "Higher absolute correlation values indicate stronger relationships between features."
+            )
